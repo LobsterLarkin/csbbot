@@ -6,7 +6,7 @@ import os
 import random
 
 
-TOKEN = "MTM5MzY4MDM2OTA0MzExMjExOQ.Gg54RS.dBkE4AmAMDOoK6saMI29alNVpCDOo_yojhWoVI"
+TOKEN = " "
 DATA_FILE = "points.json"
 BLACKLISTED_ROLES = ["🚫Чорний список", "😈 4/5", "😈 5/5", "😈 3/5"]
 ALLOWED_ROLES = ["Власник сервера", "Менеджер Персоналу", "😈 1,534,847/5"]  # Ролі, яким дозволено змінювати бали
