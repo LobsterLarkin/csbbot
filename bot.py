@@ -6,17 +6,19 @@ import os
 import random
 
 
-TOKEN = ""
+TOKEN = " "
 DATA_FILE = "points.json"
 BLACKLISTED_ROLES = ["🚫Чорний список", "😈 4/5", "😈 5/5", "😈 3/5"]
 ALLOWED_ROLES = ["Власник сервера", "Менеджер Персоналу", "😈 1,534,847/5"]  # Ролі, яким дозволено змінювати бали
 
 ROLE_PERMISSIONS = {
-	"адмінзвіт": ["Адміністрація", "Діскорд менеджер", "Власник сервера","Адмін+", "😈 1,534,847/5"],
-	"модерзвіт": ["Модерація", "Діскорд менеджер", "Власник сервера","😈 1,534,847/5"],
-	"дівентерзвіт": ["Діскорд івентер", "Діскорд менеджер", "Власник сервера","😈 1,534,847/5"],
-	"івентбал": ["Івентери", "Діскорд менеджер", "Власник сервера","Адмін+", "😈 1,534,847/5"]
+    "адмінзвіт": ["Адміністрація", "Діскорд менеджер", "Власник сервера","Адмін+", "😈 1,534,847/5"],
+    "модерзвіт": ["Модерація", "Діскорд менеджер", "Власник сервера","😈 1,534,847/5"],
+    "дівентерзвіт": ["Діскорд івентер", "Діскорд менеджер", "Власник сервера","😈 1,534,847/5"],
+    "івентбал": ["Івентери", "Діскорд менеджер", "Власник сервера","Адмін+", "😈 1,534,847/5"]
 }
+
+LOG_CHANNEL_ID = 1394100643618361598  # Заміни на реальний ID лог-каналу
 
 intents = discord.Intents.default()
 intents.members = True
@@ -24,19 +26,24 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
 
 def load_data():
-	if os.path.exists(DATA_FILE):
-		with open(DATA_FILE, "r") as f:
-			return json.load(f)
-	return {}
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    return {}
 
 def save_data(data):
-	with open(DATA_FILE, "w") as f:
-		json.dump(data, f)
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f)
+
+async def log_to_channel(bot, embed):
+    channel = bot.get_channel(LOG_CHANNEL_ID)
+    if channel:
+        await channel.send(embed=embed)
 
 @bot.event
 async def on_ready():
-	await tree.sync()
-	print(f"✅ Бот запущено як {bot.user}")
+    await tree.sync()
+    print(f"✅ Бот запущено як {bot.user}")
 
 # ----------------- Команда /моїбали -----------------
 @tree.command(name="моїбали", description="Показує твої бали")
@@ -77,33 +84,50 @@ async def лідерборд(interaction: discord.Interaction):
 @tree.command(name="видатибали", description="Видати комусь бали вручну")
 @app_commands.describe(користувач="Кому видати бали", кількість="Скільки балів")
 async def видатибали(interaction: discord.Interaction, користувач: discord.Member, кількість: int):
-	roles = [role.name for role in interaction.user.roles]
-	if not any(role in ALLOWED_ROLES for role in roles):
-		await interaction.response.send_message("⛔ У вас немає дозволу використовувати цю команду.", ephemeral=True)
-		return
+    roles = [role.name for role in interaction.user.roles]
+    if not any(role in ALLOWED_ROLES for role in roles):
+        await interaction.response.send_message("⛔ У вас немає дозволу використовувати цю команду.", ephemeral=True)
+        return
 
-	data = load_data()
-	uid = str(користувач.id)
-	data[uid] = data.get(uid, 0) + кількість
-	save_data(data)
+    data = load_data()
+    uid = str(користувач.id)
+    data[uid] = data.get(uid, 0) + кількість
+    save_data(data)
 
-	await interaction.response.send_message(f"✅ Видано **{кількість}** бал(ів) для {користувач.mention}.", ephemeral=True)
+    await interaction.response.send_message(f"✅ Видано **{кількість}** бал(ів) для {користувач.mention}.", ephemeral=True)
+
+    embed = discord.Embed(
+        title="Видача балів вручну",
+        description=f"{interaction.user.mention} видав {кількість} бал(ів) для {користувач.mention}",
+        color=discord.Color.orange()
+    )
+    await log_to_channel(bot, embed)
+
 
 # ----------------- Команда /знятибали -----------------
 @tree.command(name="знятибали", description="Зняти певну кількість балів")
 @app_commands.describe(користувач="З кого зняти бали", кількість="Скільки балів зняти")
 async def знятибали(interaction: discord.Interaction, користувач: discord.Member, кількість: int):
-	roles = [role.name for role in interaction.user.roles]
-	if not any(role in ALLOWED_ROLES for role in roles):
-		await interaction.response.send_message("⛔ У вас немає дозволу використовувати цю команду.", ephemeral=True)
-		return
+    roles = [role.name for role in interaction.user.roles]
+    if not any(role in ALLOWED_ROLES for role in roles):
+        await interaction.response.send_message("⛔ У вас немає дозволу використовувати цю команду.", ephemeral=True)
+        return
 
-	data = load_data()
-	uid = str(користувач.id)
-	data[uid] = max(0, data.get(uid, 0) - кількість)
-	save_data(data)
+    data = load_data()
+    uid = str(користувач.id)
+    data[uid] = max(0, data.get(uid, 0) - кількість)
+    save_data(data)
 
-	await interaction.response.send_message(f"⚠️ Знято **{кількість}** бал(ів) з {користувач.mention}.", ephemeral=True)
+    await interaction.response.send_message(f"⚠️ Знято **{кількість}** бал(ів) з {користувач.mention}.", ephemeral=True)
+
+    # Лог у лог-канал
+    embed = discord.Embed(
+        title="Зняття балів вручну",
+        description=f"{interaction.user.mention} зняв {кількість} бал(ів) з {користувач.mention}",
+        color=discord.Color.red()
+    )
+    await log_to_channel(bot, embed)
+
 
 # ----------------- Рольова перевірка для команд -----------------
 def has_permission(interaction: discord.Interaction, command_name: str) -> bool:
@@ -132,8 +156,8 @@ def has_permission(interaction: discord.Interaction, command_name: str) -> bool:
 )
 async def івентбал(
     interaction: discord.Interaction,
-    хост_чи_допомога: str,
-    тип_івенту: str,
+    хост_чи_допомога: app_commands.Choice[str],
+    тип_івенту: app_commands.Choice[str],
     посилання: str
 ):
     подяки = [
@@ -148,72 +172,76 @@ async def івентбал(
         await interaction.response.send_message("⛔ У вас немає дозволу використовувати цю команду.", ephemeral=True)
         return
 
-    хост_чи_допомога = хост_чи_допомога.lower()
-    тип_івенту = тип_івенту.lower()
+    хост = хост_чи_допомога.value
+    тип = тип_івенту.value
+    user = interaction.user
 
-    if хост_чи_допомога not in ["хост", "допомога"]:
-        await interaction.response.send_message(
-            "❗ Аргумент `хост/допомога` має бути або **хост**, або **допомога**.",
-            ephemeral=True
-        )
-        return
-
-    # Автоматичне визначення балів
-    if хост_чи_допомога == "допомога":
-        бали = 3 if "мега" in тип_івенту else 1
-    elif хост_чи_допомога == "хост":
-        if "мега" in тип_івенту:
-            бали = 5
-        elif "складний" in тип_івенту:
-            бали = 3
-        elif "легкий" in тип_івенту or "середній" in тип_івенту:
-            бали = 1
-        else:
-            await interaction.response.send_message(
-                "❗ Тип івенту не розпізнано. Використовуй: легкий, середній, складний, мега.",
-                ephemeral=True
-            )
+    # Визначення кількості балів
+    if хост == "допомога":
+        бали = 3 if тип == "мега" else 1
+    elif хост == "хост":
+        бали = {
+            "легкий": 1,
+            "середній": 1,
+            "складний": 3,
+            "мега": 5
+        }.get(тип, 0)
+        if бали == 0:
+            await interaction.response.send_message("❗ Невірний тип івенту.", ephemeral=True)
             return
 
     # Збереження балів
-    user = interaction.user
-    data = load_data()
     uid = str(user.id)
+    data = load_data()
     data[uid] = data.get(uid, 0) + бали
     save_data(data)
 
-    # Приватне повідомлення (DM)
+    # DM Embed
     embed = discord.Embed(
         title=f"FLAME PROJECT ЦСБ - ТОБІ ПРИЙШЛО {бали} БАЛ(А/ІВ) ЗА ІВЕНТ!",
-        description=(f"**Тип івенту:** {тип_івенту.title()}\n"
-                     f"**Роль в івенті:** {хост_чи_допомога.capitalize()}\n"
-                     f"**Кількість балів:** {бали}\n"
-                     f"📎 [Посилання на івент]({посилання})\n\n"
-                     f"> {random.choice(подяки)}"),
+        description=(
+            f"**Тип івенту:** {тип.title()}\n"
+            f"**Роль в івенті:** {хост.capitalize()}\n"
+            f"**Кількість балів:** {бали}\n"
+            f"📎 [Посилання на івент]({посилання})\n\n"
+            f"> {random.choice(подяки)}"
+        ),
         color=discord.Color.green()
     )
     embed.set_footer(text=f"Видав: {user.display_name}", icon_url=user.avatar.url if user.avatar else None)
 
+    # Спроба відправити DM
     try:
         await user.send(embed=embed)
     except discord.Forbidden:
-        await interaction.response.send_message(
-            f"⚠️ {user.mention} не отримав DM (закриті повідомлення).", ephemeral=True
+        await interaction.followup.send(
+            f"⚠️ {user.mention} не отримав DM (закриті повідомлення).",
+            ephemeral=True
         )
-        return
 
+    # Ephemeral підтвердження
     await interaction.response.send_message(
-        f"✅ Видано {бали} балів для {user.mention} як {хост_чи_допомога}!", ephemeral=True
+        f"✅ Видано {бали} бал(ів) для {user.mention} як **{хост}**!", ephemeral=True
     )
 
+    # Публічне повідомлення в канал
     await interaction.channel.send(
         f"**Івентер звіт**\n\n"
         f"**Івентер:** {user.mention}\n"
-        f"**Хост/Допомога:** {хост_чи_допомога.capitalize()}\n"
-        f"**Тип івенту:** {тип_івенту.title()}\n"
+        f"**Хост/Допомога:** {хост.capitalize()}\n"
+        f"**Тип івенту:** {тип.title()}\n"
         f"**Кількість балів:** {бали}\n"
-        f"**Посилання на івент:** {посилання}"
+        f"📎 **Посилання:** {посилання}"
     )
+
+    # Логування
+    log_embed = discord.Embed(
+        title="📥 Бал за івент",
+        description=f"{user.mention} отримав **{бали}** бал(ів) за {хост} ({тип})",
+        color=discord.Color.orange()
+    )
+    await log_to_channel(bot, log_embed)
+
 
 
 
@@ -289,6 +317,15 @@ async def модерзвіт(
         f"📎 **Посилання:** {посилання}"
     )
 
+    # Лог у лог-канал
+    log_embed = discord.Embed(
+        title="📥 Бал за модер звіт",
+        description=f"{interaction.user.mention} отримав **{бали}** бал(ів) за `{покарання}` (порушення {правило})",
+        color=discord.Color.orange()
+    )
+    await log_to_channel(bot, log_embed)
+
+    # DM-подяка
     embed = discord.Embed(
         title=f"FLAME PROJECT ЦСБ - ТОБІ ПРИЙШЛО {бали} БАЛ(А/ІВ) ЗА ЗВІТ!",
         description=(
@@ -343,7 +380,7 @@ async def адмінзвіт(
     нікнейм: str,
     правило: app_commands.Choice[str],
     стімайді: str,
-    час_покарання: str = None  # ✅ Тепер правильно
+    час_покарання: str = None
 ):
     покарання = покарання.value
     правило = правило.value
@@ -412,7 +449,15 @@ async def адмінзвіт(
         f"**Бали:** {бали}"
     )
 
-    # Відповідь у ephemeral
+    # Логування в лог-канал (лише бали)
+    log_embed = discord.Embed(
+        title="📥 Бал за адмін звіт",
+        description=f"{user.mention} отримав **{бали}** бал(ів)",
+        color=discord.Color.orange()
+    )
+    await log_to_channel(bot, log_embed)
+
+    # Ephemeral-відповідь
     await interaction.response.send_message(
         f"✅ {user.mention} отримав **{бали}** бал(ів) за покарання **{покарання}**.\n"
         f"**Нікнейм порушника:** {нікнейм}\n"
@@ -421,8 +466,6 @@ async def адмінзвіт(
         f"**Тривалість покарання:** {час_text}",
         ephemeral=True
     )
-
-
 
 
 
@@ -438,10 +481,9 @@ async def адмінзвіт(
         app_commands.Choice(name="Без приза", value="без приза"),
     ]
 )
-
 async def дівентерзвіт(
     interaction: discord.Interaction,
-    приз: str,
+    приз: app_commands.Choice[str],
     посилання: str
 ):
     подяки = [
@@ -456,12 +498,8 @@ async def дівентерзвіт(
         await interaction.response.send_message("⛔ У вас немає дозволу використовувати цю команду.", ephemeral=True)
         return
 
-    приз = приз.lower()
-    if приз not in ["з призом", "без приза"]:
-        await interaction.response.send_message("❗ Вкажи або `з призом`, або `без приза`.", ephemeral=True)
-        return
-
-    бали = 2 if приз == "з призом" else 1
+    приз_value = приз.value
+    бали = 2 if приз_value == "з призом" else 1
 
     # Додавання балів до interaction.user
     uid = str(interaction.user.id)
@@ -471,23 +509,31 @@ async def дівентерзвіт(
 
     # Відповідь автору команди
     await interaction.response.send_message(
-        f"✅ Тобі нараховано **{бали} бал(ів)** за івент **({приз})**.", ephemeral=True
+        f"✅ Тобі нараховано **{бали} бал(ів)** за івент **({приз_value})**.", ephemeral=True
     )
 
     # Публічне повідомлення в канал
     await interaction.channel.send(
         f"**Діскорд-Івентер звіт**\n\n"
         f"**Івентер:** {interaction.user.mention}\n"
-        f"**Приз:** {приз}\n"
+        f"**Приз:** {приз_value}\n"
         f"**Бали:** {бали}\n"
         f"**Посилання на лог:** {посилання}"
     )
+
+    # Логування в лог-канал
+    log_embed = discord.Embed(
+        title="📥 Бал за діскорд івент-звіт",
+        description=f"{interaction.user.mention} отримав **{бали}** бал(ів) за Discord-івент ({приз_value})",
+        color=discord.Color.orange()
+    )
+    await log_to_channel(bot, log_embed)
 
     # DM-повідомлення
     embed = discord.Embed(
         title=f"FLAME PROJECT ЦСБ - ТОБІ ПРИЙШЛО {бали} БАЛ(А/ІВ) ЗА ІВЕНТ!",
         description=(
-            f"**Призовий статус:** {приз.capitalize()}\n"
+            f"**Призовий статус:** {приз_value.capitalize()}\n"
             f"📎 [Посилання на лог івенту]({посилання})\n\n"
             f"> {random.choice(подяки)}"
         ),

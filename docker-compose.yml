@@ -1,0 +1,6 @@
+services:
+  csbbot:
+    build: .
+    volumes:
+      - .:/app
+
