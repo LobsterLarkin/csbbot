@@ -65,6 +65,11 @@ def add_history(user_id: int, тип: str, бали: int, **extra):
     save_history(history)
 
 
+def get_multiplier(member: discord.Member) -> int:
+    """Повертає множник балів (2x якщо є роль '2x points')."""
+    return 2 if any(role.name == "2 x Бали" for role in member.roles) else 1
+
+
 
 # ----------------- LOG -----------------
 async def log_to_channel(bot, embed):
@@ -428,28 +433,29 @@ def has_permission(interaction: discord.Interaction, command_name: str) -> bool:
     return any(role in allowed_roles for role in user_roles)
 
 
-@tree.command(name="івентбал", description="Видати бали за івент")
+# ------/івентбал------
+@tree.command(name="івентбал", description="Звіт івентера")
 @app_commands.describe(
-    хост_чи_допомога="Роль у івенті: хост або допомога",
-    тип_івенту="Назва івенту (легкий, середній, складний, мега)",
-    посилання="Посилання на лог або івент"
+    хост_чи_допомога="Роль у івенті: хост / допомога",
+    тип="Тип івенту",
+    посилання="Посилання на оголошення про закінчення івенту"
 )
 @app_commands.choices(
     хост_чи_допомога=[
         app_commands.Choice(name="Хост", value="хост"),
         app_commands.Choice(name="Допомога", value="допомога"),
     ],
-    тип_івенту=[
-        app_commands.Choice(name="Легкий", value="легкий"),
-        app_commands.Choice(name="Середній", value="середній"),
-        app_commands.Choice(name="Складний", value="складний"),
-        app_commands.Choice(name="Мега", value="мега"),
+    тип=[
+        app_commands.Choice(name="Легкий", value="Легкий"),
+        app_commands.Choice(name="Середній", value="Середній"),
+        app_commands.Choice(name="Складний", value="Складний"),
+        app_commands.Choice(name="Мега", value="Мега"),
     ]
 )
 async def івентбал(
     interaction: discord.Interaction,
     хост_чи_допомога: app_commands.Choice[str],
-    тип_івенту: app_commands.Choice[str],
+    тип: app_commands.Choice[str],
     посилання: str
 ):
     подяки = [
@@ -464,42 +470,91 @@ async def івентбал(
         await interaction.response.send_message("⛔ У вас немає дозволу використовувати цю команду.", ephemeral=True)
         return
 
-    хост = хост_чи_допомога.value
-    тип = тип_івенту.value
     user = interaction.user
+    роль_учасника = хост_чи_допомога.value
+    тип = тип.value
 
-    if хост == "допомога":
-        бали = 3 if тип == "мега" else 1
-    elif хост == "хост":
-        бали = {
-            "легкий": 1,
-            "середній": 2,
-            "складний": 3,
-            "мега": 5
-        }.get(тип, 0)
-        if бали == 0:
-            await interaction.response.send_message("❗ Невірний тип івенту.", ephemeral=True)
-            return
+    # таблиця балів для хоста
+    хост_бали = {
+        "Легкий": 1,
+        "Середній": 2,
+        "Складний": 3,
+        "Мега": 7,
+    }
+
+    # таблиця балів для допомоги
+    допомога_бали = {
+        "Легкий": 1,
+        "Середній": 1,
+        "Складний": 2,
+        "Мега": 3,
+    }
+
+    if роль_учасника == "хост":
+        бали = хост_бали.get(тип, 0)
+    else:
+        бали = допомога_бали.get(тип, 0)
+
+    multiplier = get_multiplier(user)
+    final_points = бали * multiplier
+    suffix = " (2x)" if multiplier > 1 else ""
 
     uid = str(user.id)
     data = load_data()
-    data[uid] = data.get(uid, 0) + бали
+    data[uid] = data.get(uid, 0) + final_points
     save_data(data)
 
-    add_history(user.id, f"івент ({хост}, {тип})", бали)
+    # ephemeral
+    await interaction.response.send_message(
+        f"✅ Тобі нараховано {final_points}{suffix} бал(ів) як **{роль_учасника.capitalize()}** за івент **{тип}**.",
+        ephemeral=True
+    )
 
-    embed = discord.Embed(
-        title=f"FLAME PROJECT ЦСБ - ТОБІ ПРИЙШЛО {бали} БАЛ(А/ІВ) ЗА ІВЕНТ!",
+    # публічний звіт
+    msg = await interaction.channel.send(
+        f"**Івент Звіт**\n\n"
+        f"**{роль_учасника.capitalize()}:** {user.mention}\n"
+        f"**Тип івенту:** {тип}\n"
+        f"**Бали:** {final_points}{suffix}\n"
+        f"📎 **Посилання:** {посилання}"
+    )
+
+    # історія
+    add_history(
+        user.id,
+        f"івент ({роль_учасника}, {тип})",
+        final_points,
+        посилання=посилання,
+        звіт_url=msg.jump_url
+    )
+
+    # лог
+    log_embed = discord.Embed(
+        title="📥 Бал за івент",
         description=(
-            f"**Тип івенту:** {тип.title()}\n"
-            f"**Роль в івенті:** {хост.capitalize()}\n"
-            f"**Кількість балів:** {бали}\n"
-            f"📎 [Посилання на івент]({посилання})\n\n"
+            f"{user.mention} отримав **{final_points}{suffix}** бал(ів) "
+            f"як {роль_учасника} за івент ({тип})\n"
+            f"{msg.jump_url}"
+        ),
+        color=discord.Color.orange()
+    )
+    await log_to_channel(bot, log_embed)
+
+    # DM
+    embed = discord.Embed(
+        title=f"FLAME PROJECT ЦСБ - ТОБІ ПРИЙШЛО {final_points}{suffix} БАЛ(А/ІВ) ЗА ІВЕНТ!",
+        description=(
+            f"**Статус:** {роль_учасника.capitalize()}\n"
+            f"**Тип івенту:** {тип}\n"
+            f"📎 [Посилання на лог івенту]({посилання})\n\n"
             f"> {random.choice(подяки)}"
         ),
         color=discord.Color.green()
     )
-    embed.set_footer(text=f"Видав: {user.display_name}", icon_url=user.avatar.url if user.avatar else None)
+    embed.set_footer(
+        text=f"Звіт подав: {user.display_name}",
+        icon_url=user.avatar.url if user.avatar else None
+    )
 
     try:
         await user.send(embed=embed)
@@ -509,31 +564,12 @@ async def івентбал(
             ephemeral=True
         )
 
-    await interaction.response.send_message(
-        f"✅ Видано {бали} бал(ів) для {user.mention} як **{хост}**!", ephemeral=True
-    )
 
-    msg = await interaction.channel.send(
-        f"**Івентер звіт**\n\n"
-        f"**Івентер:** {user.mention}\n"
-        f"**Хост/Допомога:** {хост.capitalize()}\n"
-        f"**Тип івенту:** {тип.title()}\n"
-        f"**Кількість балів:** {бали}\n"
-        f"**Посилання на івент:** {посилання}"
-    )
 
-    log_embed = discord.Embed(
-        title="📥 Бал за івент (у грі)",
-        description=(
-            f"{user.mention} отримав **{бали}** бал(ів) за {хост} ({тип})\n"
-            f"[📄 Переглянути публічний звіт]({msg.jump_url})"
-        ),
-        color=discord.Color.orange()
-    )
-    await log_to_channel(bot, log_embed)
     
 
 
+# ------/модерзвіт------
 @tree.command(name="модерзвіт", description="Звіт модератора")
 @app_commands.describe(
     порушник="Ім'я або тег порушника",
@@ -584,15 +620,24 @@ async def модерзвіт(
         await interaction.response.send_message("❗ Невірне покарання.", ephemeral=True)
         return
 
+    # множник і фінальні бали
+    multiplier = get_multiplier(interaction.user)
+    final_points = бали * multiplier
+    suffix = " (2x)" if multiplier > 1 else ""
+
+    # збереження
     uid = str(interaction.user.id)
     data = load_data()
-    data[uid] = data.get(uid, 0) + бали
+    data[uid] = data.get(uid, 0) + final_points
     save_data(data)
 
+    # відповідь модеру
     await interaction.response.send_message(
-        f"✅ Модератор {interaction.user.mention} отримав {бали} бал(и) за `{покарання}`.", ephemeral=True
+        f"✅ Модератор {interaction.user.mention} отримав {final_points}{suffix} бал(и) за `{покарання}`.",
+        ephemeral=True
     )
 
+    # публічне повідомлення
     msg = await interaction.channel.send(
         f"**Модерзвіт**\n\n"
         f"**Модератор:** {interaction.user.mention}\n"
@@ -600,14 +645,15 @@ async def модерзвіт(
         f"**Порушене правило:** {правило}\n"
         f"**Покарання:** {покарання.title()}\n"
         f"**Час покарання:** {час}\n"
-        f"**Бали:** {бали}\n"
+        f"**Бали:** {final_points}{suffix}\n"
         f"📎 **Посилання:** {посилання}"
     )
 
+    # історія
     add_history(
         interaction.user.id,
         "модерзвіт",
-        бали,
+        final_points,
         порушник=порушник,
         правило=правило,
         покарання=покарання,
@@ -616,25 +662,28 @@ async def модерзвіт(
         звіт_url=msg.jump_url
     )
 
+    # лог у канал
     log_embed = discord.Embed(
         title="📥 Бал за модер звіт",
         description=(
-            f"{interaction.user.mention} отримав **{бали}** бал(ів) за `{покарання}` (порушення {правило})\n"
-            f"[📄 Переглянути публічний звіт]({msg.jump_url})"
+            f"{interaction.user.mention} отримав **{final_points}{suffix}** бал(ів) "
+            f"за `{покарання}` (порушення {правило})\n"
+            f"{msg.jump_url}"
         ),
         color=discord.Color.orange()
     )
     await log_to_channel(bot, log_embed)
 
+    # DM
     embed = discord.Embed(
-        title=f"FLAME PROJECT ЦСБ - ТОБІ ПРИЙШЛО {бали} БАЛ(А/ІВ) ЗА ЗВІТ!",
+        title=f"FLAME PROJECT ЦСБ - ТОБІ ПРИЙШЛО {final_points}{suffix} БАЛ(А/ІВ) ЗА ЗВІТ!",
         description=(
             f"**Порушник:** {порушник}\n"
             f"**Порушене правило:** {правило}\n"
             f"**Покарання:** {покарання.title()}\n"
             f"**Час покарання:** {час}\n"
             f"📎 [Посилання на покарання]({посилання})\n"
-            f"**Кількість балів:** {бали}\n\n"
+            f"**Кількість балів:** {final_points}{suffix}\n\n"
             f"> {random.choice(подяки)}"
         ),
         color=discord.Color.green()
@@ -657,6 +706,8 @@ async def модерзвіт(
 
 
 
+
+# ------/адмінзвіт------
 @tree.command(name="адмінзвіт", description="Звіт адміністратора")
 @app_commands.describe(
     покарання="Тип покарання: попередження, овервотч, мут, кік, бан",
@@ -711,22 +762,27 @@ async def адмінзвіт(
         return
 
     user = interaction.user
+    multiplier = get_multiplier(user)
+    final_points = бали * multiplier
+    suffix = " (2x)" if multiplier > 1 else ""
+
     uid = str(user.id)
     data = load_data()
-    data[uid] = data.get(uid, 0) + бали
+    data[uid] = data.get(uid, 0) + final_points
     save_data(data)
 
     час_text = час_покарання if час_покарання else "-"
 
+    # DM
     embed_dm = discord.Embed(
-        title=f"FLAME PROJECT ЦСБ - ТОБІ ПРИЙШЛО {бали} БАЛ(А/ІВ) ЗА ЗВІТ!",
+        title=f"FLAME PROJECT ЦСБ - ТОБІ ПРИЙШЛО {final_points}{suffix} БАЛ(А/ІВ) ЗА ЗВІТ!",
         description=(
             f"**Покарання:** {покарання.title()}\n"
             f"**Порушник:** {нікнейм}\n"
             f"**Порушене правило:** {правило}\n"
             f"**Steam ID:** {стімайді}\n"
             f"**Тривалість:** {час_text}\n"
-            f"**Кількість балів:** {бали}\n\n"
+            f"**Кількість балів:** {final_points}{suffix}\n\n"
             f"> {random.choice(подяки)}"
         ),
         color=discord.Color.green()
@@ -738,6 +794,7 @@ async def адмінзвіт(
     except discord.Forbidden:
         await interaction.followup.send(f"⚠️ {user.mention} не отримав DM (закриті повідомлення).", ephemeral=True)
 
+    # публічний звіт
     msg = await interaction.channel.send(
         f"**Адмін звіт**\n\n"
         f"**Адмін:** {user.mention}\n"
@@ -746,13 +803,14 @@ async def адмінзвіт(
         f"**Steam ID:** {стімайді}\n"
         f"**Покарання:** {покарання.title()}\n"
         f"**Тривалість:** {час_text}\n"
-        f"**Бали:** {бали}"
+        f"**Бали:** {final_points}{suffix}"
     )
 
+    # історія
     add_history(
         user.id,
         "адмінзвіт",
-        бали,
+        final_points,
         порушник=нікнейм,
         правило=правило,
         покарання=покарання,
@@ -761,18 +819,21 @@ async def адмінзвіт(
         звіт_url=msg.jump_url
     )
 
+    # лог
     log_embed = discord.Embed(
         title="📥 Бал за адмін звіт",
         description=(
-            f"{user.mention} отримав **{бали}** бал(ів) за `{покарання}` (порушення {правило})\n"
-            f"[📄 Переглянути публічний звіт]({msg.jump_url})"
+            f"{user.mention} отримав **{final_points}{suffix}** бал(ів) "
+            f"за `{покарання}` (порушення {правило})\n"
+            f"{msg.jump_url}"
         ),
         color=discord.Color.orange()
     )
     await log_to_channel(bot, log_embed)
 
+    # ephemeral-відповідь
     await interaction.response.send_message(
-        f"✅ {user.mention} отримав **{бали}** бал(ів) за покарання **{покарання}**.\n"
+        f"✅ {user.mention} отримав **{final_points}{suffix}** бал(ів) за покарання **{покарання}**.\n"
         f"**Нікнейм порушника:** {нікнейм}\n"
         f"**Порушене правило:** {правило}\n"
         f"**Steam ID:** {стімайді}\n"
@@ -785,6 +846,7 @@ async def адмінзвіт(
 
 
 
+# ------/дівентерзвіт------
 @tree.command(name="дівентерзвіт", description="Звіт дискорд-івентера")
 @app_commands.describe(
     приз="Чи був приз (з призом / без приза)",
@@ -814,46 +876,57 @@ async def дівентерзвіт(
         return
 
     приз_value = приз.value
-    бали = 5 if приз_value == "з призом" else 2
+    base_points = 5 if приз_value == "з призом" else 2
+
+    multiplier = get_multiplier(interaction.user)
+    final_points = base_points * multiplier
+    suffix = " (2x)" if multiplier > 1 else ""
 
     uid = str(interaction.user.id)
     data = load_data()
-    data[uid] = data.get(uid, 0) + бали
+    data[uid] = data.get(uid, 0) + final_points
     save_data(data)
 
+    # ephemeral відповідь
     await interaction.response.send_message(
-        f"✅ Тобі нараховано **{бали} бал(ів)** за івент **({приз_value})**.", ephemeral=True
+        f"✅ Тобі нараховано **{final_points}{suffix}** бал(ів) за івент **({приз_value})**.",
+        ephemeral=True
     )
 
+    # публічний звіт
     msg = await interaction.channel.send(
         f"**Діскорд-Івентер звіт**\n\n"
         f"**Івентер:** {interaction.user.mention}\n"
         f"**Приз:** {приз_value}\n"
-        f"**Бали:** {бали}\n"
+        f"**Бали:** {final_points}{suffix}\n"
         f"**Посилання на лог:** {посилання}"
     )
 
+    # історія
     add_history(
         interaction.user.id,
         "дівентерзвіт",
-        бали,
+        final_points,
         приз=приз_value,
         посилання=посилання,
         звіт_url=msg.jump_url
     )
 
+    # лог у канал
     log_embed = discord.Embed(
         title="📥 Бал за діскорд івент-звіт",
         description=(
-            f"{interaction.user.mention} отримав **{бали}** бал(ів) за Discord-івент ({приз_value})\n"
-            f"[📄 Переглянути публічний звіт]({msg.jump_url})"
+            f"{interaction.user.mention} отримав **{final_points}{suffix}** бал(ів) "
+            f"за Discord-івент ({приз_value})\n"
+            f"{msg.jump_url}"
         ),
         color=discord.Color.orange()
     )
     await log_to_channel(bot, log_embed)
 
+    # DM
     embed = discord.Embed(
-        title=f"FLAME PROJECT ЦСБ - ТОБІ ПРИЙШЛО {бали} БАЛ(А/ІВ) ЗА ІВЕНТ!",
+        title=f"FLAME PROJECT ЦСБ - ТОБІ ПРИЙШЛО {final_points}{suffix} БАЛ(А/ІВ) ЗА ІВЕНТ!",
         description=(
             f"**Призовий статус:** {приз_value.capitalize()}\n"
             f"📎 [Посилання на лог івенту]({посилання})\n\n"
@@ -873,6 +946,7 @@ async def дівентерзвіт(
             f"⚠️ {interaction.user.mention} не отримав DM (закриті повідомлення).",
             ephemeral=True
         )
+
 
 
 
