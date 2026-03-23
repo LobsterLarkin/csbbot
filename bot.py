@@ -16,10 +16,13 @@ ROLE_PERMISSIONS = {
     "адмінзвіт": ["Адміністрація", "Діскорд менеджер", "Власник сервера","Адмін+", "😈 1,534,847/5"],
     "модерзвіт": ["Модерація", "Діскорд менеджер", "Власник сервера","😈 1,534,847/5"],
     "дівентерзвіт": ["Діскорд івентер", "Діскорд менеджер", "Власник сервера","😈 1,534,847/5"],
-    "івентбал": ["Івентери", "Діскорд менеджер", "Власник сервера","Адмін+", "😈 1,534,847/5"]
+    "івентбал": ["Івентери", "Діскорд менеджер", "Власник сервера","Адмін+", "😈 1,534,847/5"],
+    "перевірка": ["Контролер норми"]
 }
 
 LOG_CHANNEL_ID = 1395098916491628575    
+
+ALLOWED_CHECK_CHANNEL_ID = 1485587704585650296
 
 intents = discord.Intents.default()
 intents.members = True
@@ -60,13 +63,12 @@ def add_history(user_id: int, тип: str, бали: int, **extra):
         "бали": бали,
         "дата": datetime.date.today().isoformat()
     }
-    entry.update(extra)  # додаємо всі додаткові дані (посилання, jump_url, порушник тощо)
+    entry.update(extra) 
     history.append(entry)
     save_history(history)
 
 
 def get_multiplier(member: discord.Member) -> int:
-    """Повертає множник балів (2x якщо є роль '2x points')."""
     return 2 if any(role.name == "2 x Бали" for role in member.roles) else 1
 
 
@@ -236,7 +238,7 @@ async def бали(
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-
+# embed
 # ----------------- PERMISSIONS -----------------
 def has_permission(interaction: discord.Interaction, command_name: str) -> bool:
     user_roles = [role.name for role in interaction.user.roles]
@@ -947,6 +949,105 @@ async def дівентерзвіт(
             ephemeral=True
         )
 
+@tree.command(name="перевірка", description="Звіт перевірки персоналу")
+@app_commands.describe(
+    перевірив="Кого перевірили",
+    тип="Тип персоналу",
+    статус="Результат перевірки",
+    посилання="Посилання на звіт"
+)
+@app_commands.choices(
+    тип=[
+        app_commands.Choice(name="Ігровий персонал", value="ігровий"),
+        app_commands.Choice(name="Діскорд персонал", value="діскорд"),
+    ],
+    статус=[
+        app_commands.Choice(name="Виконав", value="виконав"),
+        app_commands.Choice(name="Не виконав", value="не виконав"),
+    ]
+)
+async def перевірка(
+    interaction: discord.Interaction,
+    перевірив: discord.Member,
+    тип: app_commands.Choice[str],
+    статус: app_commands.Choice[str],
+    посилання: str
+):
+    if not has_permission(interaction, "адмінзвіт"):
+        await interaction.response.send_message("⛔ У вас немає дозволу.", ephemeral=True)
+        return
+
+    user = interaction.user
+    тип_value = тип.value
+    статус_value = статус.value
+
+    multiplier = get_multiplier(user)
+    final_points = 1 * multiplier
+    suffix = " (2x)" if multiplier > 1 else ""
+
+    uid = str(user.id)
+    data = load_data()
+    data[uid] = data.get(uid, 0) + final_points
+    save_data(data)
+
+    # 🔹 Публічний звіт
+    msg = await interaction.channel.send(
+        f"**Звіт перевірки**\n\n"
+        f"**Перевірив:** {user.mention}\n"
+        f"**Перевірений:** {перевірив.mention}\n"
+        f"**Тип персоналу:** {тип_value}\n"
+        f"**Результат:** {статус_value.capitalize()}\n"
+        f"**Бали:** {final_points}{suffix}\n"
+        f"📎 **Посилання:** {посилання}"
+    )
+
+    add_history(
+        user.id,
+        "перевірка",
+        final_points,
+        перевірений=перевірив.id,
+        тип_персоналу=тип_value,
+        статус=статус_value,
+        посилання=посилання,
+        звіт_url=msg.jump_url
+    )
+
+    # 🔹 Відповідь
+    await interaction.response.send_message(
+        f"✅ Тобі нараховано {final_points}{suffix} бал(ів) за перевірку.",
+        ephemeral=True
+    )
+
+    # 🔹 Лог
+    log_embed = discord.Embed(
+        title="Перевірка норми",
+        description=(
+            f"{user.mention} перевірив {перевірив.mention}\n"
+            f"Тип: {тип_value}\n"
+            f"Результат: {статус_value}\n"
+            f"Бали: {final_points}{suffix}\n"
+            f"{msg.jump_url}"
+        ),
+        color=discord.Color.blue()
+    )
+    await log_to_channel(bot, log_embed)
+
+    # 🔹 DM
+    embed = discord.Embed(
+        title=f"# ВАШУ НОРМУ БУЛО ПЕРЕВІРЕНО✅",
+        description=(
+            f"**Хто перевірив:** {user.display_name}\n"
+            f"**Галузь персоналу:** {тип_value}\n"
+            f"**Результат:** {статус_value.capitalize()}\n"
+            f"📎 [Посилання на звіт]({посилання})"
+        ),
+        color=discord.Color.green() if статус_value == "виконав" else discord.Color.red()
+    )
+
+    try:
+        await перевірив.send(embed=embed)
+    except discord.Forbidden:
+        pass
 
 
 
