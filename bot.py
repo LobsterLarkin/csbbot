@@ -89,7 +89,7 @@ async def on_ready():
 # --- helpers для дат ---
 def parse_date_input(s: str):
     """Повертає datetime.date з рядка. Основний формат: дд/мм/рррр.
-       Додатково пробує рррр-мм-дд та рррр/мм/дд (щоб не падати, якщо хтось звик до старого формату)."""
+        пробує рррр-мм-дд та рррр/мм/дд (щоб не падати, якщо хтось звик до старого формату)."""
     import datetime as _dt
     if not s:
         return None
@@ -849,7 +849,7 @@ async def адмінзвіт(
 
 
 # ------/дівентерзвіт------
-@tree.command(name="дівентерзвіт", description="Звіт дискорд-івентера")
+@tree.command(name="дівентерзвіт", description="Звіт діскорд-івентера")
 @app_commands.describe(
     приз="Чи був приз (з призом / без приза)",
     посилання="Посилання на лог завершеного івенту"
@@ -973,7 +973,7 @@ async def перевірка(
     статус: app_commands.Choice[str],
     посилання: str
 ):
-    if not has_permission(interaction, "адмінзвіт"):
+    if not has_permission(interaction, "перевірка"):
         await interaction.response.send_message("⛔ У вас немає дозволу.", ephemeral=True)
         return
 
